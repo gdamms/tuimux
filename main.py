@@ -79,9 +79,11 @@ def box(x, y, width, height):
     print('─' * (width - 2), end='')
     print('╯', end='', flush=True)
 
+
 def log(x):
     print(x, file=open('log2.txt', 'a'))
     return x
+
 
 def get_key():
     fd = sys.stdin.fileno()
@@ -107,11 +109,14 @@ def get_key():
 MIN_WIDTH = 20
 MIN_HEIGHT = 5
 
-SESSIONS_WIDTH = 20
+SESSION_WIDTH = 80
 
 
 def main():
     tmuxui = Tmuxui()
+    renaming = None
+    rename = ''
+
     with tmuxui:
         server = libtmux.Server()
 
@@ -124,9 +129,12 @@ def main():
                 time.sleep(1)
                 continue
 
-            box(1, 1, SESSIONS_WIDTH, th)
+            dh = th - 2
+            SESSIONS_WIDTH = tw - SESSION_WIDTH - 2
+
+            box(1, 1, SESSIONS_WIDTH, dh)
             for session_i, session in enumerate(server.sessions):
-                if session_i >= th - 2:
+                if session_i >= dh - 2:
                     break
                 name = session.name or ""
                 name = name[:SESSIONS_WIDTH - 2]
@@ -138,39 +146,76 @@ def main():
                 print(name, end='', flush=True)
                 if session_i == tmuxui.session_selector:
                     ANSI.revert_colors()
-            
-            box(SESSIONS_WIDTH + 1, 1, tw - SESSIONS_WIDTH, th)
-            focus_session = server.sessions[tmuxui.session_selector]
-            window = focus_session.attached_window
-            pane = window.attached_pane
-            pane_width = tw - SESSIONS_WIDTH
-            pane_height = th
-            if pane:
-                pane_content = pane.capture_pane(start='-')
-                if not isinstance(pane_content, str):
-                    pane_content.reverse()
-                    for line_i, line in enumerate(pane_content):
-                        if line_i > pane_height - 3:
-                            break
-                        line = line[:pane_width - 3]
-                        ANSI.move_cursor(SESSIONS_WIDTH + 2, pane_height - 1 - line_i)
-                        print(line, end='', flush=True)
-                
+
+            box(SESSIONS_WIDTH + 1, 1, tw - SESSIONS_WIDTH, dh)
+            if len(server.sessions) > 0:
+                focus_session = server.sessions[tmuxui.session_selector]
+                window = focus_session.active_window
+                pane = window.active_pane
+                pane_width = tw - SESSIONS_WIDTH
+                pane_height = dh
+                if pane:
+                    pane_content = pane.capture_pane(start='-')
+                    if not isinstance(pane_content, str):
+                        pane_content.reverse()
+                        for line_i, line in enumerate(pane_content):
+                            if line_i > pane_height - 3:
+                                break
+                            line = line[:pane_width - 3]
+                            ANSI.move_cursor(SESSIONS_WIDTH + 2, pane_height - 1 - line_i)
+                            print(line, end='', flush=True)
+
+            #display helper on the bottom
+            if not renaming:
+                message = 'q: quit; ↑/↓: select session; n: new; d: delete; r: rename'
+            else:
+                message = 'Session name: ' + rename
+            ANSI.move_cursor(1, th)
+            message = message + ' ' * (tw - len(message))
+            print(message, end='', flush=True)
 
             key = get_key()
-            if key == '\x1b[A':
-                tmuxui.session_selector -= 1
-                tmuxui.session_selector %= len(server.sessions)
-            elif key == '\x1b[B':
-                tmuxui.session_selector += 1
-                tmuxui.session_selector %= len(server.sessions)
-            elif key == 'q':
-                break
-            elif key == '\x1b':
-                break
-            if key is not None:
-                print(key, file=open('log.txt', 'a'))
-
+            if renaming is not None:
+                # escape
+                if key == '\x1b':
+                    renaming = None
+                # backspace
+                elif key == '\x7f':
+                    rename = rename[:-1]
+                # enter
+                elif key == '\n':
+                    server.sessions[tmuxui.session_selector].rename_session(rename)
+                    renaming = None
+                # any other key
+                elif key is not None:
+                    rename += key
+                if key is not None:
+                    print(key, rename, file=open('log.txt', 'a'))
+            else:
+                if key == '\x1b[A':
+                    if len(server.sessions) > 0:
+                        tmuxui.session_selector -= 1
+                        tmuxui.session_selector %= len(server.sessions)
+                elif key == '\x1b[B':
+                    if len(server.sessions) > 0:
+                        tmuxui.session_selector += 1
+                        tmuxui.session_selector %= len(server.sessions)
+                elif key == 'q':
+                    break
+                elif key == '\x1b':
+                    break
+                elif key == 'n':
+                    renaming = server.new_session(x=SESSION_WIDTH)
+                    rename = ''
+                elif key == 'd':
+                    if len(server.sessions) > 0:
+                        server.sessions[tmuxui.session_selector].kill()
+                elif key == 'r':
+                    if len(server.sessions) > 0:
+                        renaming = server.sessions[tmuxui.session_selector]
+                        rename = server.sessions[tmuxui.session_selector].name or ''
+                else:
+                    pass
 
 
 if __name__ == '__main__':
