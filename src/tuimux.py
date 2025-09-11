@@ -12,7 +12,7 @@ class Tuimux:
 
     MIN_WIDTH = 80
     MIN_HEIGHT = 10
-    SESSIONS_WIDTH = 10
+    SESSIONS_WIDTH_MIN = 10
 
     def __init__(self):
         self.session_selector = 0
@@ -41,6 +41,11 @@ class Tuimux:
         self.renderer.render()
         self.restore_terminal()
         return False
+
+    @property
+    def SESSIONS_WIDTH(self):
+        tw, th = os.get_terminal_size()
+        return max(self.SESSIONS_WIDTH_MIN, tw // 4)
 
     def setup_terminal(self):
         self.fd = sys.stdin.fileno()
