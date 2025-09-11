@@ -10,7 +10,7 @@ from .renderer import Renderer
 
 class Tuimux:
 
-    MIN_WIDTH = 80
+    MIN_WIDTH = 40
     MIN_HEIGHT = 10
     SESSIONS_WIDTH_MIN = 10
 
