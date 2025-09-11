@@ -24,6 +24,9 @@ class Tuimux:
 
         self.newname = None
 
+        self.deleting = None
+        self.deleting_yes = False
+
     def __enter__(self):
         self.setup_terminal()
         self.renderer.hide_cursor()
@@ -79,6 +82,7 @@ class Tuimux:
             self.render_selected_session()
             self.render_renaming()
             self.render_new_session()
+            self.render_deleting()
             self.render_help()
 
     @property
@@ -175,6 +179,7 @@ class Tuimux:
     def render_new_session(self):
         if self.newname is None:
             return
+
         tw, th = os.get_terminal_size()
         box_y = th // 2
         box_h = 3
@@ -198,6 +203,43 @@ class Tuimux:
 
         self.renderer.reset_color()
 
+    def render_deleting(self):
+        if self.deleting is None:
+            return
+
+        tw, th = os.get_terminal_size()
+        box_y = th // 2
+        box_h = 4
+        box_x = tw // 2 - 30
+
+        session_name = self.deleting.name or ''
+        session_id = (self.deleting.id or '')[1:]
+        msg = f'Delete session "{session_name}" (id {session_id})?'
+        yes_msg = ' Yes '
+        no_msg = ' No '
+        sep_msg = ' '
+
+        yes_no_w = len(yes_msg) + len(no_msg) + len(sep_msg)
+        box_w = max(len(msg), yes_no_w) + 2
+        yes_no_x = box_x + (box_w - yes_no_w) // 2
+
+        self.renderer.reset_color()
+        self.renderer.box(box_x, box_y, box_w, box_h)
+        self.renderer.move_cursor(box_x + 1, box_y + 1)
+        self.renderer.write(msg)
+
+        self.renderer.move_cursor(yes_no_x, box_y + 2)
+        if self.deleting_yes:
+            self.renderer.invert_colors()
+        self.renderer.write(yes_msg)
+        self.renderer.reset_color()
+
+        self.renderer.write(sep_msg)
+
+        if not self.deleting_yes:
+            self.renderer.invert_colors()
+        self.renderer.write(no_msg)
+        self.renderer.reset_color()
 
     def handle_renaming(self, key):
         # escape
@@ -261,7 +303,8 @@ class Tuimux:
             self.newname = ''
         elif key == 'd':
             if len(self.sessions) > 0:
-                self.sessions[self.session_selector].kill()
+                self.deleting = self.sessions[self.session_selector]
+                self.deleting_yes = False
         elif key == 'r':
             if len(self.sessions) > 0:
                 self.renaming = self.sessions[self.session_selector]
@@ -273,10 +316,41 @@ class Tuimux:
 
         return True
 
+    def process_deleting(self):
+        assert self.deleting is not None
+
+        if self.deleting_yes:
+            self.deleting.kill_session()
+        self.deleting = None
+        self.deleting_yes = False
+        self.session_selector = min(self.session_selector, len(self.sessions) - 1)
+
+    def handle_deleting(self, key):
+        assert self.deleting is not None
+
+        if key == '\x1b[A' or key == '\x1b[B' or key == '\x1b[C' or key == '\x1b[D':
+            self.deleting_yes = not self.deleting_yes
+        elif key == 'y':
+            if self.deleting_yes:
+                self.process_deleting()
+            else:
+                self.deleting_yes = True
+        elif key == 'n' or key == '\x1b' or key == 'q':
+            if not self.deleting_yes:
+                self.process_deleting()
+            else:
+                self.deleting_yes = False
+        elif key == '\n':
+            self.process_deleting()
+
+        return True
+
     def handle(self, key):
         if self.renaming is not None:
             return self.handle_renaming(key)
         elif self.newname is not None:
             return self.handle_new_session(key)
+        elif self.deleting is not None:
+            return self.handle_deleting(key)
         else:
             return self.handle_normal(key)
