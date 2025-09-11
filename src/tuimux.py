@@ -279,6 +279,7 @@ class Tuimux:
                     break
             else:
                 self.server.new_session(session_name=self.newname or None)
+                self.session_selector = len(self.sessions) - 1
                 self.newname = None
         # any other key
         elif key in list('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'):
