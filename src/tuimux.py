@@ -70,6 +70,7 @@ class Tuimux:
         return tw >= self.MIN_WIDTH and th >= self.MIN_HEIGHT
 
     def render_too_small(self):
+        self.renderer.reset_color()
         self.renderer.move_cursor(1, 1)
         self.renderer.write('Terminal size is too small.')
         time.sleep(1)
@@ -98,6 +99,7 @@ class Tuimux:
         tw, th = os.get_terminal_size()
         dh = th - 1
 
+        self.renderer.reset_color()
         self.renderer.box(1, 1, self.SESSIONS_WIDTH, dh)
         for session_i, session in enumerate(self.sessions):
             if session_i >= dh - 2:
@@ -121,6 +123,7 @@ class Tuimux:
         tw, th = os.get_terminal_size()
         dh = th - 1
 
+        self.renderer.reset_color()
         self.renderer.box(self.SESSIONS_WIDTH + 1, 1, tw - self.SESSIONS_WIDTH, dh)
         if len(self.sessions) > 0:
             focus_session = self.sessions[self.session_selector]
@@ -148,12 +151,15 @@ class Tuimux:
 
     def render_help(self):
         tw, th = os.get_terminal_size()
+
+        self.renderer.reset_color()
         self.renderer.move_cursor(1, th)
         self.renderer.write(self.help)
 
     def render_renaming(self):
         if self.renaming is None:
             return
+
         tw, th = os.get_terminal_size()
         box_y = th // 2
         box_h = 3
@@ -165,6 +171,7 @@ class Tuimux:
                 self.renderer.color('red')
                 break
 
+        self.renderer.reset_color()
         self.renderer.box(box_x, box_y, box_w, box_h)
         self.renderer.move_cursor(box_x + 1, box_y + 1)
         self.renderer.write('Session name: ')
@@ -173,8 +180,6 @@ class Tuimux:
         else:
             self.renderer.color('bright_black')
             self.renderer.write('empty name not allowed')
-
-        self.renderer.reset_color()
 
     def render_new_session(self):
         if self.newname is None:
@@ -186,22 +191,29 @@ class Tuimux:
         box_x = tw // 2 - 20
         box_w = 40
 
+        session_name_msg = 'Session name: '
+        session_name_msg_w = len(session_name_msg)
+        max_name_w = box_w - 2 - session_name_msg_w
+
         for session in self.sessions:
             if session.name == self.newname:
                 color = '\x1b[31m'
                 self.renderer.write(color)
                 break
 
+        self.renderer.reset_color()
         self.renderer.box(box_x, box_y, box_w, box_h)
         self.renderer.move_cursor(box_x + 1, box_y + 1)
-        self.renderer.write('Session name: ')
+        self.renderer.write(session_name_msg)
         if self.newname:
-            self.renderer.write(self.newname)
+            if len(self.newname) <= max_name_w:
+                self.renderer.write(self.newname)
+            else:
+                newname_msg = '...' + self.newname[-(max_name_w - 3):]
+                self.renderer.write(newname_msg)
         else:
             self.renderer.color('bright_black')
             self.renderer.write('use id as name')
-
-        self.renderer.reset_color()
 
     def render_deleting(self):
         if self.deleting is None:
@@ -239,7 +251,6 @@ class Tuimux:
         if not self.deleting_yes:
             self.renderer.invert_colors()
         self.renderer.write(no_msg)
-        self.renderer.reset_color()
 
     def handle_renaming(self, key):
         # escape
