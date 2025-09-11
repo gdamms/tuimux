@@ -342,7 +342,7 @@ class Tuimux:
 
         if key == '\x1b[A' or key == '\x1b[B' or key == '\x1b[C' or key == '\x1b[D':
             self.deleting_yes = not self.deleting_yes
-        elif key == 'y':
+        elif key == 'y' or key == 'd':
             if self.deleting_yes:
                 self.process_deleting()
             else:
