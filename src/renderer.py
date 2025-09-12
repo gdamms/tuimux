@@ -4,6 +4,16 @@ from .ansi import ANSI
 
 
 class Renderer:
+
+    BOX_CORNER_TOP_LEFT = '╭'
+    BOX_CORNER_TOP_RIGHT = '╮'
+    BOX_CORNER_BOTTOM_LEFT = '╰'
+    BOX_CORNER_BOTTOM_RIGHT = '╯'
+    BOX_HORIZONTAL = '─'
+    BOX_VERTICAL = '│'
+    BOX_TITLE_LEFT = '╴'
+    BOX_TITLE_RIGHT = '╶'
+
     def __init__(self):
         self.buffer = ''
 
@@ -55,20 +65,28 @@ class Renderer:
         if background in ANSI.BACKGROUND_COLORS:
             self.write(ANSI.BACKGROUND_COLORS[background])
 
-    def box(self, x, y, w, h):
+    def box(self, x, y, w, h, title=None):
         max_w, max_h = os.get_terminal_size()
+
         assert x >= 1 and y >= 1 and w >= 2 and h >= 2
         assert x + w - 1 <= max_w and y + h - 1 <= max_h
+        assert title is None or len(title) <= w - 4
+
         self.move_cursor(x, y)
-        self.write('╭')
-        self.write('─' * (w - 2))
-        self.write('╮')
+        self.write(self.BOX_CORNER_TOP_LEFT)
+        if title:
+            top_bar = self.BOX_TITLE_LEFT + title + self.BOX_TITLE_RIGHT
+            top_bar = top_bar.ljust(w - 2, self.BOX_HORIZONTAL)
+        else:
+            top_bar = self.BOX_HORIZONTAL * (w - 2)
+        self.write(top_bar)
+        self.write(self.BOX_CORNER_TOP_RIGHT)
         for i in range(h - 2):
             self.move_cursor(x, y + i + 1)
-            self.write('│')
+            self.write(self.BOX_VERTICAL)
             self.move_cursor(x + w - 1, y + i + 1)
-            self.write('│')
+            self.write(self.BOX_VERTICAL)
         self.move_cursor(x, y + h - 1)
-        self.write('╰')
-        self.write('─' * (w - 2))
-        self.write('╯')
+        self.write(self.BOX_CORNER_BOTTOM_LEFT)
+        self.write(self.BOX_HORIZONTAL * (w - 2))
+        self.write(self.BOX_CORNER_BOTTOM_RIGHT)

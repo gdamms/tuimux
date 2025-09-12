@@ -1,9 +1,10 @@
-import libtmux
 import os
 import sys
 import termios
 import select
 import time
+
+import libtmux
 
 from .renderer import Renderer
 
@@ -105,7 +106,7 @@ class Tuimux:
         dh = th - 1
 
         self.renderer.reset_color()
-        self.renderer.box(1, 1, self.SESSIONS_WIDTH, dh)
+        self.renderer.box(1, 1, self.SESSIONS_WIDTH, dh, title='Sessions')
         for session_i, session in enumerate(self.sessions):
             if session_i >= dh - 2:
                 break
@@ -129,7 +130,7 @@ class Tuimux:
         dh = th - 1
 
         self.renderer.reset_color()
-        self.renderer.box(self.SESSIONS_WIDTH + 1, 1, tw - self.SESSIONS_WIDTH, dh)
+        self.renderer.box(self.SESSIONS_WIDTH + 1, 1, tw - self.SESSIONS_WIDTH, dh, title='View')
         if len(self.sessions) > 0:
             focus_session = self.sessions[self.session_selector]
             window = focus_session.active_window
