@@ -56,6 +56,17 @@ class Tuimux:
         new_settings[6][termios.VMIN] = 0  # cc
         new_settings[6][termios.VTIME] = 0  # cc
         termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, new_settings)
+        self.enable_mouse()
+
+    def enable_mouse(self):
+        sys.stdout.write("\x1b[?1000h")
+        sys.stdout.write("\x1b[?1006h")
+        sys.stdout.flush()
+
+    def disable_mouse(self):
+        sys.stdout.write("\x1b[?1000l")
+        sys.stdout.write("\x1b[?1006l")
+        sys.stdout.flush()
 
     def get_key(self):
         if select.select([sys.stdin], [], [], 0.1)[0]:
@@ -68,6 +79,7 @@ class Tuimux:
         return None
 
     def restore_terminal(self):
+        self.disable_mouse()
         termios.tcsetattr(sys.stdin, termios.TCSAFLUSH, self.old_settings)
 
     @property
