@@ -1,17 +1,10 @@
-from src.tuimux import Tuimux
+from src.tuimux import TuiMux
 
 
 def main():
-    tuimux = Tuimux()
-
-    with tuimux:
-        while True:
-            key = tuimux.get_key()
-            if not tuimux.handle(key):
-                break
-            tuimux.render()
-            tuimux.blink()
+    app = TuiMux()
+    app.run()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
