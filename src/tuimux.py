@@ -66,7 +66,6 @@ class TuiMux:
                 pane_el.width = pane_width
                 pane_el.height = Element.FILL_PARENT
                 pane_el.border = Element.BORDER_ROUNDED
-
                 if len(self.sessions) == 0:
                     pane_el.text = "No sessions"
                 else:
@@ -82,7 +81,12 @@ class TuiMux:
                             pane_el.text = pane_content
                         else:
                             pane_el.text = "\n".join(pane_content[-pane_height:])
-                    tui.root_element.add_child(pane_el)
+                tui.root_element.add_child(pane_el)
+
+                panel_el_title = Element()
+                panel_el_title.text = "╴Pane content╶"
+                panel_el_title.y = -1
+                pane_el.add_child(panel_el_title)
 
             tui.root_element.key_event_listeners.append(quit)
             tui.root_element.key_event_listeners.append(key_move_session)
