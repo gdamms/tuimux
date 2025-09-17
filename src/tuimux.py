@@ -8,7 +8,8 @@ from pytui import PyTUI, Element, ANSI
 class TuiMux:
 
     SESSIONS_WIDTH = 0.35
-    PANE_WIDTH = 80
+    NEW_SESSION_WIDTH = 30
+    NEW_SESSION_HEIGHT = 5
 
     def __init__(self):
         self.tmux_server = libtmux.Server()
@@ -40,7 +41,6 @@ class TuiMux:
                     text = f"{session_id}: {session_name}"
                     if session_i == self.session_cursor:
                         text = ANSI.INVERT_COLORS + text + ANSI.REVERT_COLORS
-                        print(text, file=sys.stderr)
                     lines.append(text)
                 return "\n".join(lines)
 
@@ -63,7 +63,10 @@ class TuiMux:
 
             def new_session(el, key):
                 if key.key == 'n' or key.key == 'N':
-                    pass
+                    if el.style == Element.STYLE_NORMAL:
+                        el.style = Element.STYLE_HIDDEN
+                    else:
+                        el.style = Element.STYLE_NORMAL
 
             sessions_width = int(self.SESSIONS_WIDTH * tui.root_element.actual_content_width)
             pane_width = tui.root_element.actual_content_width - sessions_width
@@ -95,6 +98,16 @@ class TuiMux:
             panel_el_title.text = "╴Pane content╶"
             panel_el_title.y = -1
             pane_el.add_child(panel_el_title)
+
+            new_session_el = Element()
+            new_session_el.border = Element.BORDER_HEAVY
+            new_session_el.width = self.NEW_SESSION_WIDTH
+            new_session_el.height = self.NEW_SESSION_HEIGHT
+            new_session_el.style = Element.STYLE_HIDDEN
+            new_session_el.x = (tui.root_element.actual_content_width - new_session_el.width) // 2
+            new_session_el.y = (tui.root_element.actual_content_height - new_session_el.height) // 2
+            new_session_el.key_event_listeners.append(new_session)
+            tui.root_element.add_child(new_session_el)
 
             tui.root_element.key_event_listeners.append(quit)
 
