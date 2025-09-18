@@ -26,6 +26,14 @@ class TuiMux:
                 if key.key == 'q' or key.key == 'Q' or key.key == 'ESCAPE':
                     tui.quit()
 
+            def on_focus(el):
+                print("focus", el, file=sys.stderr)
+                el.border = Element.BORDER_HEAVY
+
+            def on_blur(el):
+                print("blur", el, file=sys.stderr)
+                el.border = Element.BORDER_ROUNDED
+
             def key_move_session(el, key):
                 if key.key == 'UP':
                     self.session_cursor = (self.session_cursor - 1) % len(self.sessions)
@@ -77,6 +85,8 @@ class TuiMux:
             sessions_col.width = int(sessions_width)
             sessions_col.text = sessions_text()
             sessions_col.key_event_listeners.append(key_move_session)
+            sessions_col.focus_listeners.append(on_focus)
+            sessions_col.blur_listeners.append(on_blur)
             tui.root_element.add_child(sessions_col)
 
             session_col_title = Element()
@@ -92,6 +102,8 @@ class TuiMux:
             pane_el.height = Element.FILL_PARENT
             pane_el.border = Element.BORDER_ROUNDED
             pane_el.render_listeners.append(update_pane_content)
+            pane_el.focus_listeners.append(on_focus)
+            pane_el.blur_listeners.append(on_blur)
             tui.root_element.add_child(pane_el)
 
             panel_el_title = Element()
