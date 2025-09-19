@@ -10,6 +10,7 @@ class TuiMux:
     SESSIONS_WIDTH = 0.35
     NEW_SESSION_WIDTH = 30
     NEW_SESSION_HEIGHT = 5
+    REFRESH_RATE = 10
 
     def __init__(self):
         self.tmux_server = libtmux.Server()
@@ -20,37 +21,56 @@ class TuiMux:
         return sorted(self.tmux_server.list_sessions(), key=lambda s: int((s.id or '$-1')[1:]))
 
     def run(self):
-        with PyTUI(refresh_rate=10) as tui:
+        with PyTUI(refresh_rate=self.REFRESH_RATE) as tui:
 
-            def quit(el, key):
+            def quit(tui, key):
                 if key.key == 'q' or key.key == 'Q' or key.key == 'ESCAPE':
                     tui.quit()
+            tui.key_event_listeners.append(quit)
 
-            def on_focus(el):
-                print("focus", el, file=sys.stderr)
-                el.border = Element.BORDER_HEAVY
-
-            def on_blur(el):
-                print("blur", el, file=sys.stderr)
-                el.border = Element.BORDER_ROUNDED
-
-            def key_move_session(el, key):
+            def arrow_session(el, key):
+                # TODO: handle scroll
+                # TODO: handle more sessions than lines (roll over)
                 if key.key == 'UP':
                     self.session_cursor = (self.session_cursor - 1) % len(self.sessions)
                 elif key.key == 'DOWN':
                     self.session_cursor = (self.session_cursor + 1) % len(self.sessions)
-                el.text = sessions_text()
+                else:
+                    return
 
-            def sessions_text():
-                lines = []
-                for session_i, session in enumerate(self.sessions):
+                for child in el.children:
+                    child.style = Element.STYLE_NORMAL
+                if len(el.children) > 1:
+                    el.children[self.session_cursor + 1].style = Element.STYLE_INVERTED
+
+            def build_session_col(lines_width, nb_lines):
+                col = Element()
+                col.border = Element.BORDER_ROUNDED
+                col.height = Element.FILL_PARENT
+                col.width = int(lines_width)
+
+                col_title = Element()
+                col_title.text = "╴Sessions╶"
+                col_title.y = -1
+                col.add_child(col_title)
+
+                nb_sessions = len(self.sessions)
+                nb_lines = min(nb_lines, nb_sessions)
+                for i in range(nb_lines):
+                    session = self.sessions[i]
                     session_id = session.id or '$?'
                     session_name = session.name or 'unnamed'
-                    text = f"{session_id}: {session_name}"
-                    if session_i == self.session_cursor:
-                        text = ANSI.INVERT_COLORS + text + ANSI.REVERT_COLORS
-                    lines.append(text)
-                return "\n".join(lines)
+                    line_el = Element()
+                    line_el.y = i
+                    line_el.width = Element.FILL_PARENT
+                    line_el.text = f"{session_id}: {session_name}"
+                    if i == self.session_cursor:
+                        line_el.style = Element.STYLE_INVERTED
+                    col.add_child(line_el)
+
+                col.key_event_listeners.append(arrow_session)
+
+                return col
 
             def update_pane_content(el):
                 if len(self.sessions) == 0:
@@ -69,32 +89,23 @@ class TuiMux:
                         else:
                             el.text = "\n".join(pane_content[-pane_height:])
 
-            def new_session(el, key):
-                if key.key == 'n' or key.key == 'N':
-                    if el.style == Element.STYLE_NORMAL:
-                        el.style = Element.STYLE_HIDDEN
-                    else:
-                        el.style = Element.STYLE_NORMAL
-
+            # TODO: replace this with a percentage width element and fill parents that adjust to remaining space
             sessions_width = int(self.SESSIONS_WIDTH * tui.root_element.actual_content_width)
             pane_width = tui.root_element.actual_content_width - sessions_width
 
-            sessions_col = Element()
-            sessions_col.border = Element.BORDER_ROUNDED
-            sessions_col.height = Element.FILL_PARENT
-            sessions_col.width = int(sessions_width)
-            sessions_col.text = sessions_text()
-            sessions_col.key_event_listeners.append(key_move_session)
-            sessions_col.focus_listeners.append(on_focus)
-            sessions_col.blur_listeners.append(on_blur)
-            tui.root_element.add_child(sessions_col)
-
-            session_col_title = Element()
-            session_col_title.text = "╴Sessions╶"
-            session_col_title.y = -1
-            sessions_col.add_child(session_col_title)
-
             self.session_cursor = min(self.session_cursor, len(self.sessions) - 1)
+
+            sessions_col = build_session_col(sessions_width, tui.root_element.actual_content_height)
+            tui.root_element.add_child(sessions_col)
+            sessions_col.focus()
+
+            def terminal_size_change(tui, size):
+                nonlocal sessions_col
+                tui.root_element.remove_child(sessions_col)
+                sessions_width = int(self.SESSIONS_WIDTH * tui.root_element.actual_content_width)
+                sessions_col = build_session_col(sessions_width, size[1])
+                tui.root_element.add_child(sessions_col)
+            tui.terminal_resize_listeners.append(terminal_size_change)
 
             pane_el = Element()
             pane_el.x = sessions_width
@@ -102,8 +113,6 @@ class TuiMux:
             pane_el.height = Element.FILL_PARENT
             pane_el.border = Element.BORDER_ROUNDED
             pane_el.render_listeners.append(update_pane_content)
-            pane_el.focus_listeners.append(on_focus)
-            pane_el.blur_listeners.append(on_blur)
             tui.root_element.add_child(pane_el)
 
             panel_el_title = Element()
@@ -118,9 +127,22 @@ class TuiMux:
             new_session_el.style = Element.STYLE_HIDDEN
             new_session_el.x = (tui.root_element.actual_content_width - new_session_el.width) // 2
             new_session_el.y = (tui.root_element.actual_content_height - new_session_el.height) // 2
-            new_session_el.key_event_listeners.append(new_session)
-            tui.root_element.add_child(new_session_el)
 
-            tui.root_element.key_event_listeners.append(quit)
+            def on_focus(el):
+                el.style = Element.STYLE_NORMAL
+
+            def on_blur(el):
+                el.style = Element.STYLE_HIDDEN
+
+            def new_session(tui, key):
+                if key.key == 'n' or key.key == 'N':
+                    if new_session_el.style == Element.STYLE_HIDDEN:
+                        new_session_el.focus()
+                    else:
+                        new_session_el.blur()
+            tui.key_event_listeners.append(new_session)
+            new_session_el.focus_listeners.append(on_focus)
+            new_session_el.blur_listeners.append(on_blur)
+            tui.root_element.add_child(new_session_el)
 
             tui.run()
