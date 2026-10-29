@@ -1,0 +1,32 @@
+[project]
+name = "gdamms-tuimux"
+version = "0.2.0"
+description = "A lazydocker-like terminal UI to manage tmux sessions."
+readme = "README.md"
+authors = [{ name = "gdamms", email = "damguillotin@gmail.com" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "gdamms-pytui>=0.2.0",
+]
+
+[project.scripts]
+tuimux = "tuimux.app:main"
+
+[tool.uv.build-backend]
+module-name = "tuimux"
+
+[build-system]
+requires = ["uv_build>=0.13.3,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
