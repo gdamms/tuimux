@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from pytui import App, Box, ListView, Row, Style, Text, Widget
-from pytui.text import truncate
+from pytui import App, Box, Button, ListView, Row, Style, Text, Widget
 
 from . import tmux
 from .dialogs import Confirm, Modal, Prompt
@@ -11,32 +10,80 @@ from .tmux import Session
 
 REFRESH_INTERVAL = 0.5
 PANEL = Style(border="rounded", border_fg="bright_black", focus_within=Style(border_fg="cyan"))
-HELP = "↑/↓ select · enter/a attach · n new · r rename · d delete · q quit"
+TAB = Style(bg="default", fg="bright_black", hover=Style(fg="white", bg="default"))
+ACTIVE_TAB = Style(bg="default", fg="cyan", bold=True, hover=Style(fg="cyan", bg="default"))
+SEPARATOR = Style(fg="bright_black", bg="default")
+HELP = "↑/↓ select · ←/→ tab · enter/a attach · n new · r rename · d delete · q quit"
 
 
-class Preview(Widget):
-    """The bottom of a list of lines, like a terminal screen."""
+TABS = ("preview", "stats", "env", "config")
 
-    DEFAULT_STYLE = Style(flex_grow=1)
 
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.lines: list[str] = []
+def size(n: float) -> str:
+    for unit in ("B", "K", "M", "G"):
+        if n < 1024 or unit == "G":
+            return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
+        n /= 1024
+    return ""
 
-    def render(self, canvas) -> None:
-        area = self.content_region
-        if area.empty:
-            return
-        for row, line in enumerate(self.lines[-area.height :]):
-            canvas.text(area.x, area.y + row, truncate(line, area.width), self.text_style)
+
+def stats_lines(session: Session) -> list[str]:
+    procs = session.processes()
+    windows = f"{session.windows} window" + "s" * (session.windows > 1)
+    lines = [
+        f"session {session.name} ({windows})",
+        "",
+        f"cpu     {sum(p.cpu for p in procs):.1f}%",
+        f"memory  {size(sum(p.rss for p in procs))}",
+        f"procs   {len(procs)}",
+        "",
+        f"{'PID':>7} {'CPU%':>6} {'MEM':>7}  COMMAND",
+    ]
+    return lines + [f"{p.pid:>7} {p.cpu:>6.1f} {size(p.rss):>7}  {p.command}" for p in procs]
+
+
+def config_lines(session: Session) -> list[str]:
+    info = session.info()
+    rows = {
+        "id": session.id[1:],
+        "name": session.name,
+        "windows": info["session_windows"],
+        "attached": "yes" if session.attached else "no",
+        "created": tmux.format_time(info["session_created"]),
+        "last activity": tmux.format_time(info["session_activity"]),
+        "start directory": info["session_path"],
+        "current directory": info["pane_current_path"],
+        "current command": info["pane_current_command"],
+    }
+    return [f"{key:<18}{value}" for key, value in rows.items()]
+
+
+def env_lines(session: Session) -> list[str]:
+    return [f"{key}={value}" for key, value in sorted(session.environment().items())]
 
 
 class TuiMux:
     def __init__(self) -> None:
         self.sessions: list[Session] = []
-        self.list = ListView(on_highlight=lambda *_: self.refresh_preview(), flex_grow=1)
-        self.preview = Preview()
-        self.preview_panel = Box(self.preview, style=PANEL, flex_grow=1)
+        self.tab = TABS[0]
+        self.list = ListView(on_highlight=lambda *_: self.select_changed(), flex_grow=1)
+        self.preview = Text(overflow="scroll", text_wrap=False, height=0, flex_grow=1)
+        self.tabs = {
+            t: Button(
+                t,
+                lambda t=t: self.set_tab(t),
+                focusable=False,
+                style=ACTIVE_TAB if t == self.tab else TAB,
+            )
+            for t in TABS
+        }
+        self.preview_panel = Box(
+            Row(*self.tab_bar(), position="absolute", top=-1, left=1),
+            self.preview,
+            style=PANEL | Style(overflow="visible"),
+            width=0,  # size from flex_grow only, so long lines cannot squish the sessions
+            flex_grow=1,
+        )
         self.root = Box(
             Row(
                 Box(self.list, style=PANEL, title="Sessions", width="30%", min_width=20),
@@ -50,9 +97,19 @@ class TuiMux:
         self.list.bind("enter", self.attach)
         bindings = {"q escape": self.app.exit, "a": self.attach, "n": self.new}
         bindings |= {"r": self.rename, "d": self.delete}
+        bindings |= {"right": lambda: self.switch(1), "left": lambda: self.switch(-1)}
+        bindings |= {str(i): lambda t=t: self.set_tab(t) for i, t in enumerate(TABS, 1)}
         for keys, action in bindings.items():
             self.app.bind(keys, action)
         self.app.set_interval(REFRESH_INTERVAL, self.refresh)
+
+    def tab_bar(self) -> list[Widget]:
+        bar: list[Widget] = []
+        for button in self.tabs.values():
+            if bar:
+                bar.append(Text("─", style=SEPARATOR, text_wrap=False))
+            bar.append(button)
+        return bar
 
     @property
     def selected(self) -> Session | None:
@@ -72,13 +129,36 @@ class TuiMux:
 
     def refresh_preview(self) -> None:
         session = self.selected
-        if session is None:
-            self.preview_panel.title = "Preview"
-            self.preview.lines = ["No sessions, press n to create one."]
-        else:
-            windows = f"{session.windows} window" + "s" * (session.windows > 1)
-            self.preview_panel.title = f"{session.name} ({windows})"
-            self.preview.lines = session.capture()
+        content = {
+            "preview": lambda: session.capture(),
+            "stats": lambda: stats_lines(session),
+            "env": lambda: env_lines(session),
+            "config": lambda: config_lines(session),
+        }[self.tab]
+        lines = content() if session else ["No sessions, press n to create one."]
+        # Like a terminal, the preview keeps showing the bottom unless scrolled up.
+        follow = self.tab == "preview" and self.preview.scroll_y >= self.preview.max_scroll_y
+        self.preview.text = "\n".join(lines)
+        if follow:
+            self.preview.scroll_y = 2**31
+
+    def reset_scroll(self) -> None:
+        # Scroll positions are clamped when laid out, so a huge one means the bottom.
+        self.preview.scroll_y = 2**31 if self.tab == "preview" else 0
+
+    def select_changed(self) -> None:
+        self.reset_scroll()
+        self.refresh_preview()
+
+    def set_tab(self, tab: str) -> None:
+        self.tab = tab
+        for name, button in self.tabs.items():
+            button.style = ACTIVE_TAB if name == tab else TAB
+        self.reset_scroll()
+        self.refresh_preview()
+
+    def switch(self, step: int) -> None:
+        self.set_tab(TABS[(TABS.index(self.tab) + step) % len(TABS)])
 
     # --- actions ------------------------------------------------------------
 
